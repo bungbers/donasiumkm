@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Donasi UMKM</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-b from-white to-gray-50 min-h-screen p-4">
+  <div class="max-w-xl mx-auto bg-white shadow-md rounded-2xl p-6">
+    <header class="mb-4">
+      <h1 class="text-2xl font-bold text-center">Donasi untuk UMKM Lokal</h1>
+      <p class="text-sm text-gray-600 mt-1 text-center">
+        Dukung pelaku UMKM dengan donasi cepat & aman
+      </p>
+    </header>
+
+    <form id="donasiForm" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium">Nama *</label>
+        <input
+          id="nama"
+          type="text"
+          class="mt-1 block w-full rounded-lg border p-3"
+          placeholder="Nama lengkap"
+          required
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium">Email *</label>
+        <input
+          id="email"
+          type="email"
+          class="mt-1 block w-full rounded-lg border p-3"
+          placeholder="email@contoh.com"
+          required
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium">Jumlah Donasi (Rp) *</label>
+        <input
+          id="jumlah"
+          type="text"
+          inputmode="numeric"
+          class="mt-1 block w-full rounded-lg border p-3"
+          placeholder="100.000"
+          required
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium">Pilih UMKM *</label>
+        <select
+          id="umkm"
+          class="mt-1 block w-full rounded-lg border p-3"
+          required
+        >
+          <option value="">-- Pilih UMKM --</option>
+          <option value="UMKM Makanan Sehat">UMKM Makanan Sehat</option>
+          <option value="UMKM Kerajinan Lokal">UMKM Kerajinan Lokal</option>
+          <option value="UMKM Fashion">UMKM Fashion</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium">Pesan (opsional)</label>
+        <textarea
+          id="pesan"
+          class="mt-1 block w-full rounded-lg border p-3"
+          rows="3"
+          placeholder="Dukungan Anda..."
+        ></textarea>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium">Upload Bukti Transfer (opsional)</label>
+        <input type="file" id="bukti" accept="image/*" class="mt-2" />
+        <div id="preview" class="mt-2"></div>
+        <p class="text-xs text-gray-500 mt-1">
+          Bukti akan disimpan dalam Google Sheet sebagai URL/Base64 untuk ditindaklanjuti.
+        </p>
+      </div>
+
+      <div class="flex justify-center">
+        <button
+          type="submit"
+          id="submitBtn"
+          class="px-4 py-2 rounded-full bg-indigo-600 text-white font-semibold shadow"
+        >
+          Donasi Sekarang
+        </button>
+      </div>
+
+      <div id="status" class="mt-4 text-center text-sm"></div>
+    </form>
+
+    <footer class="mt-6 text-xs text-gray-500 text-center">
+      <p>
+        Data donasi akan otomatis tercatat di Google Sheets. 
+        File bukti transfer dapat dikelola manual atau dipindahkan ke Google Drive.
+      </p>
+    </footer>
+  </div>
+
+  <script>
+    // === KONFIGURASI ===
+    const GOOGLE_SCRIPT_URL = "PASTE_URL_GOOGLE_APPS_SCRIPT_DISINI";
+
+    const form = document.getElementById("donasiForm");
+    const statusDiv = document.getElementById("status");
+    const jumlahInput = document.getElementById("jumlah");
+    const buktiInput = document.getElementById("bukti");
+    const previewDiv = document.getElementById("preview");
+
+    // Format angka menjadi Rupiah
+    jumlahInput.addEventListener("input", () => {
+      let value = jumlahInput.value.replace(/[^0-9]/g, "");
+      jumlahInput.value = value.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    });
+
+    // Preview gambar bukti transfer
+    buktiInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          previewDiv.innerHTML = `<img src="${reader.result}" alt="Preview" class="w-40 h-40 object-cover rounded-lg shadow">`;
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Submit form
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      statusDiv.textContent = "Mengirim data...";
+      statusDiv.className = "mt-4 text-center text-sm text-gray-500";
+
+      const nama = document.getElementById("nama").value;
+      const email = document.getElementById("email").value;
+      const jumlah = jumlahInput.value.replace(/[^0-9]/g, "");
+      const umkm = document.getElementById("umkm").value;
+      const pesan = document.getElementById("pesan").value;
+
+      let buktiBase64 = "";
+      if (buktiInput.files[0]) {
+        const file = buktiInput.files[0];
+        buktiBase64 = await toBase64(file);
+      }
+
+      const payload = {
+        nama,
+        email,
+        jumlah,
+        umkm,
+        pesan,
+        buktiURL: buktiBase64
+      };
+
+      try {
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+
+        if (result.status === "success") {
+          statusDiv.textContent = "Terima kasih! Donasi berhasil dicatat.";
+          statusDiv.className = "mt-4 text-center text-sm text-green-600";
+          form.reset();
+          previewDiv.innerHTML = "";
+        } else {
+          throw new Error(result.message || "Gagal menyimpan data.");
+        }
+      } catch (error) {
+        console.error(error);
+        statusDiv.textContent = "Terjadi kesalahan saat mengirim data.";
+        statusDiv.className = "mt-4 text-center text-sm text-red-600";
+      }
+    });
+
+    // Convert file ke Base64
+    function toBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+      });
+    }
+  </script>
+</body>
+</html>
