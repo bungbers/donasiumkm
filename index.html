@@ -1,185 +1,261 @@
-<script>
-  const PROJECTS_KEY = 'umkm_projects_v2';
-  const DONORS_KEY = 'umkm_donors_v2';
+import React, { useState } from "react";
 
-  const DEFAULT_PROJECTS = [
-    {
-      id:'p1',
-      title:'Pelatihan Jahit Desa Cempaka',
-      category:'Fashion',
-      image:'https://source.unsplash.com/600x400/?sewing',
-      location:'Kabupaten Banyumas',
-      desc:'Pelatihan menjahit dan pemberian mesin jahit untuk ibu-ibu rumah tangga agar dapat memulai usaha.',
-      contact:'08123456789',
-      target:15000000,
-      raised:4200000,
-      endDate:'2025-12-31'
-    }
+// Donasi UMKM - Single-file React component
+// Tailwind classes are used for styling (no imports required in this environment).
+// Features:
+// - Responsive layout suitable for mobile
+// - Donor inputs (name, email, amount, select UMKM, message)
+// - Upload bukti transfer (image) -> optionally commits to a GitHub repo via API
+// - Preview of uploaded image
+// - Fallback: if GITHUB_TOKEN isn't provided, the form will prepare an email payload so the user can send proof manually
+
+// === CONFIGURE BELOW ===
+// To enable direct upload to a GitHub repo, create a personal access token with `repo` scope
+// and set the variables below. If you don't want to use GitHub, leave owner/repo/token empty
+// and the app will show a fallback instruction (mailto link) with encoded form data.
+
+const GITHUB_OWNER = ""; // e.g. "your-github-username"
+const GITHUB_REPO = ""; // e.g. "your-repo-name"
+const GITHUB_BRANCH = "main"; // branch to commit to
+const GITHUB_TOKEN = ""; // personal access token (dangerous in client-side apps!)
+
+// IMPORTANT: Committing directly from client-side exposes the token to users. For production,
+// implement a server-side endpoint that performs the commit safely.
+
+export default function DonasiUMKMApp() {
+  const [donorName, setDonorName] = useState("");
+  const [email, setEmail] = useState("");
+  const [amount, setAmount] = useState("");
+  const [selectedUmkm, setSelectedUmkm] = useState("");
+  const [message, setMessage] = useState("");
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState(null);
+
+  const umkmOptions = [
+    { id: "umkm-1", name: "UMKM Makanan Sehat" },
+    { id: "umkm-2", name: "UMKM Kerajinan Lokal" },
+    { id: "umkm-3", name: "UMKM Fashion" },
   ];
 
-  let PROJECTS = load(PROJECTS_KEY) || DEFAULT_PROJECTS;
-  let DONORS = load(DONORS_KEY) || [];
+  function formatRupiah(value) {
+    if (!value) return "";
+    const v = value.toString().replace(/[^0-9]/g, "");
+    return v.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  }
 
-  const projectsEl = document.getElementById('projects');
-  const summaryEl = document.getElementById('summary');
+  function handleFileChange(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = () => setPreviewUrl(reader.result);
+    reader.readAsDataURL(f);
+  }
 
-  function save(key, data){localStorage.setItem(key, JSON.stringify(data));}
-  function load(key){try{return JSON.parse(localStorage.getItem(key));}catch(e){return null}}
-  function uid(){return 'id'+Math.random().toString(36).slice(2,9)}
+  async function uploadToGitHub(base64Content, filename) {
+    const path = `image/${filename}`;
+    const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${encodeURIComponent(
+      path
+    )}`;
 
-  function formatRp(n){return (n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');}
-  function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));}
+    const body = {
+      message: `Upload bukti-donasi: ${filename}`,
+      content: base64Content.split(",")[1], // remove data:<type>;base64,
+      branch: GITHUB_BRANCH,
+    };
 
-  // Render daftar project
-  function renderProjects(filter=''){
-    projectsEl.innerHTML='';
-    const q=filter.toLowerCase();
-    const list = PROJECTS.filter(p=>!q || (p.title+p.location+p.desc).toLowerCase().includes(q));
-    if(list.length===0){
-      projectsEl.innerHTML='<div class="card" style="padding:16px">Tidak ada project</div>';
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: {
+        Authorization: `token ${GITHUB_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setStatus(null);
+
+    if (!donorName || !email || !amount || !selectedUmkm) {
+      setStatus({ type: "error", message: "Lengkapi semua bidang wajib." });
       return;
     }
-    for(const p of list){
-      const percent = Math.min(100, Math.round((p.raised||0)/(p.target||1)*100));
-      const expired = p.endDate && new Date(p.endDate)<new Date();
-      const el = document.createElement('div');
-      el.className='card';
-      el.innerHTML=`
-        <img src="${escapeHtml(p.image||'https://via.placeholder.com/600x400')}" alt="${escapeHtml(p.title)}">
-        <div class="card-body">
-          <div class="badge">${escapeHtml(p.category||'Lainnya')}</div>
-          <h3>${escapeHtml(p.title)}</h3>
-          <div class="muted">${escapeHtml(p.location)}</div>
-          <p class="muted" style="margin:6px 0">${escapeHtml(p.desc||'')}</p>
-          <div class="progress"><div class="progress-bar" style="width:${percent}%"></div></div>
-          <div class="muted">Rp ${formatRp(p.raised)} dari Rp ${formatRp(p.target)} (${percent}%)</div>
-          <div class="muted">Kontak: ${escapeHtml(p.contact||'-')}</div>
-          <div class="muted">Berakhir: ${p.endDate || '-'}</div>
-          ${expired ? '<div style="color:red;font-weight:bold;margin-top:4px">Kampanye Berakhir</div>':''}
-          <div class="actions">
-            <button class="btn btn-primary" data-action="donate" data-id="${p.id}" ${expired?'disabled':''}>Donasi</button>
-            <button class="btn btn-ghost" data-action="edit" data-id="${p.id}">Edit</button>
+
+    setLoading(true);
+
+    try {
+      let uploadResult = null;
+
+      if (file && GITHUB_OWNER && GITHUB_REPO && GITHUB_TOKEN) {
+        // create filename: donorname_timestamp.ext
+        const ext = file.name.split(".").pop();
+        const safeName = donorName.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+        const filename = `${safeName}_${Date.now()}.${ext}`;
+        const reader = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = rej;
+          r.readAsDataURL(file);
+        });
+
+        const gh = await uploadToGitHub(reader, filename);
+        uploadResult = gh;
+      }
+
+      // Prepare a record (in real app you'd store this in a DB)
+      const record = {
+        donorName,
+        email,
+        amount: amount.replace(/[^0-9]/g, ""),
+        amount_display: formatRupiah(amount),
+        umkm: selectedUmkm,
+        message,
+        uploaded: !!uploadResult,
+        github_response: uploadResult,
+        created_at: new Date().toISOString(),
+      };
+
+      // For demo: show success and print record to console
+      console.log("Donasi record:", record);
+      setStatus({ type: "success", message: "Terima kasih! Donasi tercatat." });
+
+      // reset form except keep UMKM choice
+      setDonorName("");
+      setEmail("");
+      setAmount("");
+      setMessage("");
+      setFile(null);
+      setPreviewUrl(null);
+
+    } catch (err) {
+      console.error(err);
+      setStatus({ type: "error", message: "Gagal mengirim donasi. Periksa console atau token GitHub." });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // If token not provided, create a mailto fallback with encoded data
+  function makeMailto() {
+    const subject = encodeURIComponent(`Bukti Donasi untuk ${selectedUmkm || "UMKM"}`);
+    const body = encodeURIComponent(
+      `Nama: ${donorName}\nEmail: ${email}\nJumlah: ${formatRupiah(amount)}\nUMKM: ${selectedUmkm}\nPesan: ${message}\n` +
+        (file ? "(Silakan lampirkan file bukti transfer saat membalas email ini)" : "")
+    );
+    return `mailto:your-collection-email@example.com?subject=${subject}&body=${body}`;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 p-4">
+      <div className="max-w-xl mx-auto bg-white shadow-md rounded-2xl p-6">
+        <header className="mb-4">
+          <h1 className="text-2xl font-bold">Donasi untuk UMKM Lokal</h1>
+          <p className="text-sm text-gray-600 mt-1">Dukung pelaku UMKM dengan donasi cepat & aman.</p>
+        </header>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium">Nama *</label>
+            <input
+              className="mt-1 block w-full rounded-lg border p-3"
+              value={donorName}
+              onChange={(e) => setDonorName(e.target.value)}
+              placeholder="Nama lengkap"
+            />
           </div>
-          <button class="btn btn-ghost" style="margin-top:6px" onclick="shareWhatsApp('${escapeHtml(p.title)}')">Share WA</button>
-        </div>`;
-      projectsEl.appendChild(el);
-    }
-  }
 
-  function renderSummary(){
-    const totalRaised = PROJECTS.reduce((s,p)=>s+(p.raised||0),0);
-    const totalTarget = PROJECTS.reduce((s,p)=>s+(p.target||0),0);
-    summaryEl.innerHTML = `Total Terkumpul: Rp ${formatRp(totalRaised)} • Total Target: Rp ${formatRp(totalTarget)} • Donatur: ${DONORS.length}`;
-  }
+          <div>
+            <label className="block text-sm font-medium">Email *</label>
+            <input
+              type="email"
+              className="mt-1 block w-full rounded-lg border p-3"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="email@contoh.com"
+            />
+          </div>
 
-  // Event listener tombol Donasi & Edit
-  projectsEl.addEventListener('click',e=>{
-    const btn=e.target.closest('button');if(!btn)return;
-    const id=btn.dataset.id;
-    if(btn.dataset.action==='donate') openDonateModal(id);
-    if(btn.dataset.action==='edit') openProjectModal(id);
-  });
+          <div>
+            <label className="block text-sm font-medium">Jumlah Donasi (Rp) *</label>
+            <input
+              inputMode="numeric"
+              className="mt-1 block w-full rounded-lg border p-3"
+              value={amount}
+              onChange={(e) => setAmount(formatRupiah(e.target.value))}
+              placeholder="100.000"
+            />
+          </div>
 
-  document.getElementById('search').addEventListener('input',e=>renderProjects(e.target.value));
+          <div>
+            <label className="block text-sm font-medium">Pilih UMKM *</label>
+            <select
+              className="mt-1 block w-full rounded-lg border p-3"
+              value={selectedUmkm}
+              onChange={(e) => setSelectedUmkm(e.target.value)}
+            >
+              <option value="">-- Pilih UMKM --</option>
+              {umkmOptions.map((u) => (
+                <option key={u.id} value={u.name}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-  // Donate Modal
-  const donateModal=document.getElementById('donateModal');
-  function openDonateModal(id){
-    const p=PROJECTS.find(x=>x.id===id);
-    document.getElementById('modalTitle').textContent='Donasi ke '+p.title;
-    document.getElementById('modalProjectDesc').textContent=p.location;
-    donateModal.classList.add('open');
-    donateModal.dataset.projectId=id;
-  }
-  function closeDonateModal(){donateModal.classList.remove('open');}
-  document.getElementById('cancelDonate').onclick=closeDonateModal;
-  donateModal.addEventListener('click',e=>{if(e.target===donateModal)closeDonateModal();});
+          <div>
+            <label className="block text-sm font-medium">Pesan (opsional)</label>
+            <textarea
+              className="mt-1 block w-full rounded-lg border p-3"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={3}
+              placeholder="Dukungan Anda..."
+            />
+          </div>
 
-  document.getElementById('donateForm').addEventListener('submit',e=>{
-    e.preventDefault();
-    const name=document.getElementById('donorName').value.trim()||'Anonim';
-    const amount=Number(document.getElementById('donationAmount').value)||0;
-    const pid=donateModal.dataset.projectId;
-    if(amount<1000){alert('Minimal Rp 1.000');return}
-    const donor={id:uid(),name,amount,projectId:pid,date:new Date().toISOString()};
-    DONORS.push(donor);save(DONORS_KEY,DONORS);
-    const p=PROJECTS.find(x=>x.id===pid);if(p){p.raised=(p.raised||0)+amount;save(PROJECTS_KEY,PROJECTS);}
-    renderProjects();renderSummary();closeDonateModal();alert('Terima kasih! Donasi Anda tercatat (demo).');
-  });
+          <div>
+            <label className="block text-sm font-medium">Upload Bukti Transfer (opsional)</label>
+            <input type="file" accept="image/*" onChange={handleFileChange} className="mt-2" />
+            {previewUrl && (
+              <div className="mt-2">
+                <img src={previewUrl} alt="preview" className="w-40 h-40 object-cover rounded-lg shadow" />
+              </div>
+            )}
+            <p className="text-xs text-gray-500 mt-1">File akan disimpan ke folder <strong>image/</strong> di repo jika konfigurasi GitHub diaktifkan.</p>
+          </div>
 
-  // Project Modal
-  const projectModal=document.getElementById('projectModal');
-  document.getElementById('addProjectBtn').onclick=()=>openProjectModal();
+          <div className="flex items-center justify-between">
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 rounded-full bg-indigo-600 text-white font-semibold shadow"
+            >
+              {loading ? "Mengirim..." : "Donasi Sekarang"}
+            </button>
 
-  function openProjectModal(id){
-    projectModal.classList.add('open');
-    if(id){
-      const p=PROJECTS.find(x=>x.id===id);
-      document.getElementById('projTitle').value=p.title;
-      document.getElementById('projCategory').value=p.category;
-      document.getElementById('projImage').value=p.image;
-      document.getElementById('projLoc').value=p.location;
-      document.getElementById('projDesc').value=p.desc;
-      document.getElementById('projContact').value=p.contact;
-      document.getElementById('projTarget').value=p.target;
-      document.getElementById('projEndDate').value=p.endDate;
-      projectModal.dataset.editId=id;
-    } else {
-      projectModal.dataset.editId='';
-      projectModal.querySelector('form').reset();
-    }
-  }
-  function closeProjectModal(){projectModal.classList.remove('open');}
-  document.getElementById('cancelProject').onclick=closeProjectModal;
-  projectModal.addEventListener('click',e=>{if(e.target===projectModal)closeProjectModal();});
+            {!GITHUB_TOKEN && (
+              <a href={makeMailto()} className="text-sm text-indigo-600 underline">
+                Atau kirim lewat email
+              </a>
+            )}
+          </div>
 
-  document.getElementById('projectForm').addEventListener('submit',e=>{
-    e.preventDefault();
-    const id=projectModal.dataset.editId||uid();
-    const data={
-      id,
-      title:document.getElementById('projTitle').value.trim(),
-      category:document.getElementById('projCategory').value,
-      image:document.getElementById('projImage').value.trim(),
-      location:document.getElementById('projLoc').value.trim(),
-      desc:document.getElementById('projDesc').value.trim(),
-      contact:document.getElementById('projContact').value.trim(),
-      target:Number(document.getElementById('projTarget').value)||0,
-      raised:projectModal.dataset.editId ? PROJECTS.find(x=>x.id===id).raised : 0,
-      endDate:document.getElementById('projEndDate').value
-    };
-    if(projectModal.dataset.editId){
-      const idx=PROJECTS.findIndex(x=>x.id===id);
-      PROJECTS[idx]=data;
-    } else {
-      PROJECTS.push(data);
-    }
-    save(PROJECTS_KEY,PROJECTS);
-    renderProjects();renderSummary();closeProjectModal();
-  });
+          {status && (
+            <div className={`p-3 rounded-lg ${status.type === "error" ? "bg-red-100 text-red-700" : "bg-green-50 text-green-800"}`}>
+              {status.message}
+            </div>
+          )}
+        </form>
 
-  // Export Donors CSV
-  document.getElementById('exportBtn').addEventListener('click',()=>{
-    if(DONORS.length===0){alert('Belum ada data donatur');return}
-    const rows=[['id','nama','jumlah','projectId','tanggal']];
-    for(const d of DONORS){rows.push([d.id,d.name,d.amount,d.projectId,d.date]);}
-    const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], {type: 'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'donatur.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  // Tombol Share WhatsApp
-  function shareWhatsApp(title){
-    const text = encodeURIComponent(`Yuk dukung campaign UMKM "${title}" melalui web donasi ini!`);
-    window.open(`https://wa.me/?text=${text}`, '_blank');
-  }
-
-  // Inisialisasi awal
-  renderProjects();
-  renderSummary();
-</script>
+        <footer className="mt-6 text-xs text-gray-500">
+          <p>Catatan: Untuk menyimpan file ke GitHub langsung dari browser Anda perlu menambahkan token GitHub (lihat komentar di atas). Untuk penggunaan nyata, implementasikan upload melalui server untuk keamanan token.</p>
+        </footer>
+      </div>
+    </div>
+  );
+}
