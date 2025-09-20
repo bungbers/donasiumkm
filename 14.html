@@ -3,102 +3,219 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Donasi UMKM</title>
+  <title>UMKM Donasi Web App</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #f9fafb; margin: 0; padding: 0; }
-    header { background: #2563eb; color: white; text-align: center; padding: 1rem; }
-    main { max-width: 900px; margin: auto; padding: 1rem; }
-    .project-card { background: white; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 0 8px rgba(0,0,0,0.1); }
-    .project-card img { max-width: 100%; border-radius: 8px; }
-    .progress { background: #e2e8f0; border-radius: 5px; overflow: hidden; height: 12px; margin-top: 8px; }
-    .progress-bar { background: #10b981; height: 100%; text-align: center; color: white; font-size: 10px; }
-    form { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 0 8px rgba(0,0,0,0.1); margin-top: 1rem; display: flex; flex-direction: column; gap: .5rem; }
-    input, select, button { padding: .5rem; font-size: 1rem; border: 1px solid #cbd5e1; border-radius: 6px; }
-    button { background: #2563eb; color: white; cursor: pointer; }
-    button:hover { background: #1e40af; }
-    .donor-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; margin-top: 4px; cursor: pointer; }
+    body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 0; }
+    .container { max-width: 900px; margin: auto; padding: 20px; }
+    h1 { text-align: center; }
+    .card { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; }
+    input, textarea, button { width: 100%; padding: 8px; margin-top: 5px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ccc; }
+    button { cursor: pointer; background: #007bff; color: #fff; border: none; }
+    button:hover { background: #0056b3; }
+    .flex { display: flex; gap: 10px; }
+    .project-img { width: 120px; height: 80px; object-fit: cover; border-radius: 5px; background: #f0f0f0; }
+    .status { font-size: 14px; color: #555; margin-top: 10px; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Donasi untuk Membangun UMKM</h1>
-  </header>
-  <main>
-    <section id="project-list"></section>
+<div class="container">
+  <h1>UMKM Donasi</h1>
+  <div class="card">
+    <h3>Pengaturan GitHub (Opsional)</h3>
+    <input type="text" id="owner" placeholder="Owner (username/org)">
+    <input type="text" id="repo" placeholder="Repo name">
+    <input type="text" id="branch" placeholder="Branch (misal: main)" value="main">
+    <input type="password" id="token" placeholder="Personal Access Token">
+    <small>Token hanya dipakai di browser ini. Untuk keamanan publik, gunakan backend server.</small>
+  </div>
 
-    <form id="donation-form">
-      <h2>Form Donasi</h2>
-      <input type="text" id="donorName" placeholder="Nama Donatur" required>
-      <input type="number" id="donationAmount" placeholder="Jumlah Donasi (Rp)" min="1000" required>
-      <select id="projectSelect" required></select>
-      <label>Upload Bukti Transfer:</label>
-      <input type="file" id="donationProof" accept="image/*" required>
-      <button type="submit">Kirim Donasi</button>
-    </form>
-  </main>
+  <div class="card">
+    <h3 id="form-title">Tambah Project Donasi</h3>
+    <input type="text" id="title" placeholder="Judul project" required>
+    <input type="number" id="target" placeholder="Target donasi" required>
+    <textarea id="description" placeholder="Deskripsi" required></textarea>
+    <input type="number" id="collected" placeholder="Terkumpul" value="0">
+    <input type="file" id="imageFile" accept="image/*">
+    <div class="flex">
+      <button onclick="saveProject()">Simpan</button>
+      <button onclick="resetForm()">Batal</button>
+    </div>
+  </div>
 
-  <script>
-    const PROJECTS = [
-      {id: 'p1', title: 'UMKM Kerajinan Bambu', target: 5000000, raised: 0, image: 'https://source.unsplash.com/400x200/?bamboo', desc: 'Bantuan modal untuk UMKM pengrajin bambu.'},
-      {id: 'p2', title: 'UMKM Kuliner Nusantara', target: 8000000, raised: 0, image: 'https://source.unsplash.com/400x200/?culinary', desc: 'Bantuan peralatan dan pelatihan untuk UMKM kuliner.'}
-    ];
-    const DONORS = JSON.parse(localStorage.getItem('donors') || '[]');
+  <div id="projects"></div>
+  <div class="status" id="statusMsg">Status: Ready</div>
+</div>
 
-    function saveDonors(){ localStorage.setItem('donors', JSON.stringify(DONORS)); }
-    function formatRp(num){ return 'Rp ' + num.toLocaleString('id-ID'); }
+<script>
+  let projects = [];
+  let editId = null;
+  const PROJECTS_PATH = 'data/projects.json';
 
-    function renderProjects(){
-      const container = document.getElementById('project-list');
-      const select = document.getElementById('projectSelect');
-      container.innerHTML = '';
-      select.innerHTML = '<option value="">Pilih Project</option>';
-      PROJECTS.forEach(p => {
-        const totalRaised = DONORS.filter(d=>d.projectId===p.id).reduce((sum,d)=>sum+d.amount,0);
-        p.raised = totalRaised;
-        const percent = Math.min(100, (p.raised/p.target)*100);
+  document.addEventListener('DOMContentLoaded', () => {
+    const local = localStorage.getItem('umkm_projects');
+    if (local) {
+      projects = JSON.parse(local);
+      renderProjects();
+    }
+  });
 
-        let donorThumbs = DONORS.filter(d=>d.projectId===p.id && d.proofPath).map(d=>
-          `<img src=\"${d.proofPath}\" class=\"donor-thumb\" onclick=\"window.open('${d.proofPath}','_blank')\" title=\"${d.name}\">`
-        ).join('');
+  function toBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
 
-        container.innerHTML += `
-          <div class="project-card">
-            <img src="${p.image}" alt="${p.title}">
-            <h3>${p.title}</h3>
-            <p>${p.desc}</p>
-            <div class="progress"><div class="progress-bar" style="width:${percent}%">${percent.toFixed(0)}%</div></div>
-            <p>Terkumpul: ${formatRp(p.raised)} / ${formatRp(p.target)}</p>
-            <div>Donatur:</div>
-            <div>${donorThumbs || '<small>Belum ada donatur</small>'}</div>
-          </div>
-        `;
-        select.innerHTML += `<option value="${p.id}">${p.title}</option>`;
-      });
+  async function githubPutFile({ owner, repo, path, contentBase64, message, branch, token }) {
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    let existingSha = null;
+    const getResp = await fetch(`${url}?ref=${branch}`, {
+      headers: { Authorization: `token ${token}` }
+    });
+    if (getResp.ok) {
+      const data = await getResp.json();
+      if (data.sha) existingSha = data.sha;
     }
 
-    document.getElementById('donation-form').addEventListener('submit', e => {
-      e.preventDefault();
-      const name = document.getElementById('donorName').value.trim();
-      const amount = Number(document.getElementById('donationAmount').value);
-      const projectId = document.getElementById('projectSelect').value;
-      const fileInput = document.getElementById('donationProof');
-      const file = fileInput.files[0];
+    const body = { message, content: contentBase64, branch };
+    if (existingSha) body.sha = existingSha;
 
-      if(!file){ alert('Bukti transfer wajib diupload'); return; }
-
-      // Simpan path file ke folder image
-      const fileName = `donasi-${Date.now()}-${file.name}`;
-      const filePath = `image/${fileName}`;
-
-      // Data donatur hanya menyimpan path
-      DONORS.push({id: Date.now(), name, amount, projectId, proofPath: filePath});
-      saveDonors();
-      renderProjects();
-      document.getElementById('donation-form').reset();
-      alert(`File ${file.name} harus ditambahkan secara manual ke folder 'image' dengan nama ${fileName} lalu di-commit ke GitHub.`);
+    const resp = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: `token ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
     });
 
+    const result = await resp.json();
+    if (!resp.ok) throw new Error(result.message || 'GitHub upload error');
+    return result;
+  }
+
+  async function saveProject() {
+    const title = document.getElementById('title').value;
+    const target = document.getElementById('target').value;
+    const description = document.getElementById('description').value;
+    const collected = document.getElementById('collected').value;
+    const file = document.getElementById('imageFile').files[0];
+
+    if (!title || !target || !description) {
+      alert('Lengkapi form!');
+      return;
+    }
+
+    let newProject = {
+      id: editId || `p_${Date.now()}`,
+      title,
+      target,
+      description,
+      collected,
+      image: null,
+      createdAt: Date.now()
+    };
+
+    const owner = document.getElementById('owner').value;
+    const repo = document.getElementById('repo').value;
+    const branch = document.getElementById('branch').value;
+    const token = document.getElementById('token').value;
+
+    try {
+      if (file && token && owner && repo) {
+        setStatus('Mengupload gambar ke GitHub...');
+        const b64 = await toBase64(file);
+        const filename = `image/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        await githubPutFile({ owner, repo, path: filename, contentBase64: b64, message: `Upload ${filename}`, branch, token });
+        newProject.image = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filename}`;
+      }
+
+      if (editId) {
+        projects = projects.map(p => p.id === editId ? newProject : p);
+      } else {
+        projects.unshift(newProject);
+      }
+
+      localStorage.setItem('umkm_projects', JSON.stringify(projects));
+
+      if (token && owner && repo) {
+        setStatus('Menyimpan projects.json ke GitHub...');
+        const content = btoa(JSON.stringify(projects, null, 2));
+        await githubPutFile({ owner, repo, path: PROJECTS_PATH, contentBase64: content, message: 'Update projects.json', branch, token });
+      }
+
+      setStatus('Project tersimpan.');
+      resetForm();
+      renderProjects();
+    } catch (err) {
+      console.error(err);
+      setStatus('Error: ' + err.message);
+    }
+  }
+
+  function renderProjects() {
+    const container = document.getElementById('projects');
+    container.innerHTML = '';
+    if (projects.length === 0) {
+      container.innerHTML = '<div class="card">Belum ada project.</div>';
+      return;
+    }
+    projects.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `
+        <div class="flex">
+          <div>
+            ${p.image ? `<img src="${p.image}" class="project-img">` : '<div class="project-img"></div>'}
+          </div>
+          <div style="flex:1">
+            <h4>${p.title}</h4>
+            <p>${p.description}</p>
+            <p>Target: ${p.target} | Terkumpul: ${p.collected}</p>
+            <div class="flex">
+              <button onclick="editProject('${p.id}')">Edit</button>
+              <button onclick="deleteProject('${p.id}')">Hapus</button>
+            </div>
+          </div>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  function editProject(id) {
+    const p = projects.find(x => x.id === id);
+    editId = id;
+    document.getElementById('form-title').innerText = 'Edit Project';
+    document.getElementById('title').value = p.title;
+    document.getElementById('target').value = p.target;
+    document.getElementById('description').value = p.description;
+    document.getElementById('collected').value = p.collected;
+  }
+
+  function deleteProject(id) {
+    if (!confirm('Hapus project ini?')) return;
+    projects = projects.filter(p => p.id !== id);
+    localStorage.setItem('umkm_projects', JSON.stringify(projects));
     renderProjects();
-  </script>
+    setStatus('Project dihapus.');
+  }
+
+  function resetForm() {
+    editId = null;
+    document.getElementById('form-title').innerText = 'Tambah Project Donasi';
+    document.getElementById('title').value = '';
+    document.getElementById('target').value = '';
+    document.getElementById('description').value = '';
+    document.getElementById('collected').value = 0;
+    document.getElementById('imageFile').value = '';
+  }
+
+  function setStatus(msg) {
+    document.getElementById('statusMsg').innerText = 'Status: ' + msg;
+  }
+</script>
 </body>
 </html>
