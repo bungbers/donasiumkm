@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Donasi Pembangunan UMKM</title>
+  <meta name="description" content="Web donasi untuk pembangunan UMKM - statis, siap GitHub Pages" />
+  <style>
+    :root{--accent:#2563eb;--accent2:#10b981;--bg:#f7fafc;--card:#ffffff;--muted:#475569}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Arial;margin:0;background:var(--bg);color:#0f172a}
+    .wrap{max-width:1100px;margin:20px auto;padding:16px}
+    header{display:flex;align-items:center;gap:12px}
+    header img{width:56px;height:56px;border-radius:10px}
+    h1{margin:0;font-size:20px}
+    .lead{color:var(--muted);font-size:14px}
+
+    .topbar{display:flex;gap:8px;align-items:center;margin-top:14px}
+    .search{flex:1}
+    input[type=text], input[type=number], input[type=date], select, textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6edf3}
+    button{cursor:pointer}
+    .btn{padding:8px 12px;border-radius:10px;border:0;background:var(--accent);color:white}
+    .btn.ghost{background:transparent;border:1px solid rgba(37,99,235,0.12);color:var(--accent)}
+    .btn.small{padding:6px 10px}
+
+    .columns{display:grid;grid-template-columns:1fr 320px;gap:18px;margin-top:18px}
+    .card{background:var(--card);border-radius:12px;box-shadow:0 8px 20px rgba(16,24,40,0.06);overflow:hidden}
+    .grid-cards{display:grid;gap:12px}
+    .project{display:flex;flex-direction:column}
+    .project img{width:100%;height:180px;object-fit:cover}
+    .card-body{padding:14px}
+    .muted{color:var(--muted);font-size:13px}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(37,99,235,0.08);color:var(--accent);font-weight:700;font-size:12px}
+
+    .progress{height:10px;background:#eef2ff;border-radius:999px;overflow:hidden;margin-top:8px}
+    .progress > i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%}
+    .meta{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+    .actions{display:flex;gap:8px;margin-top:10px}
+
+    .sidebar{position:sticky;top:20px}
+    .field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+    .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(2,6,23,0.45);visibility:hidden;opacity:0;transition:all .12s;z-index:999}
+    .modal.open{visibility:visible;opacity:1}
+    .dialog{width:100%;max-width:760px;background:white;border-radius:12px;overflow:auto}
+    .inner{padding:18px}
+
+    .thumbnail{max-width:92px;max-height:92px;border-radius:8px;cursor:pointer;margin-top:8px;object-fit:cover}
+    footer{margin-top:18px;color:var(--muted);font-size:13px;text-align:center}
+
+    @media(max-width:980px){.columns{grid-template-columns:1fr}.project img{height:200px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect width='64' height='64' rx='12' fill='%232563eb'/><text x='50%' y='57%' font-size='26' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'>UM</text></svg>" alt="logo">
+      <div>
+        <h1>Donasi Pembangunan UMKM</h1>
+        <div class="lead">Kumpulkan dana untuk pengembangan usaha mikro dan kecil di komunitas Anda</div>
+      </div>
+    </header>
+
+    <div class="topbar">
+      <div class="search"><input id="search" type="text" placeholder="Cari project, kategori, lokasi..." /></div>
+      <button id="addProjectBtn" class="btn ghost small">Tambah Project</button>
+      <button id="exportBtn" class="btn small">Export Donatur</button>
+    </div>
+
+    <div class="columns">
+      <main>
+        <div id="projects" class="grid-cards"></div>
+      </main>
+
+      <aside class="sidebar">
+        <div class="card card-body">
+          <h3>Ringkasan</h3>
+          <div id="summary" class="muted">Memuat...</div>
+          <hr />
+          <div class="muted">Filter kategori</div>
+          <div id="categoryFilters" style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"></div>
+        </div>
+      </aside>
+    </div>
+
+    <footer>Static demo • Deploy: GitHub Pages • Untuk pembayaran nyata hubungi penyedia gateway</footer>
+  </div>
+
+  <!-- Donate Modal -->
+  <div id="donateModal" class="modal" aria-hidden="true">
+    <div class="dialog">
+      <div class="inner">
+        <h3 id="modalTitle">Donasi</h3>
+        <div id="modalProjectDesc" class="muted"></div>
+        <form id="donateForm" style="margin-top:12px">
+          <label>Nama Donatur</label>
+          <input id="donorName" type="text" placeholder="Nama Anda" required />
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <div style="flex:1">
+              <label>Jumlah (Rp)</label>
+              <input id="donationAmount" type="number" min="1000" placeholder="10000" required />
+            </div>
+            <div style="width:160px">
+              <label>Metode</label>
+              <select id="paymentMethod"><option value="mock">Transfer (demo)</option><option value="manual">Konfirmasi</option></select>
+            </div>
+          </div>
+
+          <div style="margin-top:8px">
+            <label>Bukti Transfer (jpg/png, max 2MB)</label>
+            <input id="donationProof" type="file" accept="image/png, image/jpeg" />
+          </div>
+
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+            <button type="button" id="cancelDonate" class="btn ghost">Batal</button>
+            <button class="btn" type="submit">Donasi Sekarang</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PROJECTS_KEY = 'umkm_projects_new_v1';
+    const DONORS_KEY = 'umkm_donors_new_v1';
+
+    const DEFAULT_PROJECTS = [
+      {id:'p1', title:'Pelatihan Ketrampilan Jahit', category:'Fashion', image:'https://source.unsplash.com/900x600/?sewing', location:'Desa Cempaka', desc:'Pelatihan dan bantuan mesin jahit untuk membuka usaha rumahan.', contact:'08123456789', target:15000000, raised:4200000, endDate:null}
+    ];
+
+    function load(key){ try{ return JSON.parse(localStorage.getItem(key)); }catch(e){ return null } }
+    function save(key,val){ localStorage.setItem(key, JSON.stringify(val)); }
+    function uid(prefix='id'){ return prefix+Math.random().toString(36).slice(2,9); }
+
+    let PROJECTS = load(PROJECTS_KEY) || DEFAULT_PROJECTS.slice();
+    let DONORS = load(DONORS_KEY) || [];
+
+    const projectsEl = document.getElementById('projects');
+    const summaryEl = document.getElementById('summary');
+    const searchEl = document.getElementById('search');
+
+    function formatRp(n){ if(!n && n!==0) return '0'; return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+    function esc(s){ return String(s||'').replace(/[&<>\"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c])); }
+
+    function renderProjects(filter=''){
+      projectsEl.innerHTML='';
+      const q=(filter||'').toLowerCase();
+      const list = PROJECTS.filter(p=>!q || (p.title+p.category+p.location+p.desc).toLowerCase().includes(q));
+      if(list.length===0){ projectsEl.innerHTML='<div class="card card-body" style="padding:14px">Belum ada project</div>'; return }
+
+      for(const p of list){
+        const percent = p.target ? Math.min(100, Math.round((p.raised||0)/p.target*100)) : 0;
+        const el=document.createElement('div'); el.className='card project';
+        el.innerHTML = `
+          <img src="${esc(p.image||'https://via.placeholder.com/900x600')}" alt="${esc(p.title)}" />
+          <div class="card-body">
+            <div class="badge">${esc(p.category||'Lainnya')}</div>
+            <h3>${esc(p.title)}</h3>
+            <p class="muted">${esc(p.desc||'')}</p>
+            <div class="progress"><i style="width:${percent}%"></i></div>
+            <div class="meta"><div class="muted">Rp ${formatRp(p.raised||0)} dari Rp ${formatRp(p.target||0)}</div><div class="muted">${percent}%</div></div>
+            <div class="actions">
+              <button class="btn" data-action="donate" data-id="${p.id}">Donasi</button>
+            </div>
+          </div>
+        `;
+        projectsEl.appendChild(el);
+      }
+    }
+
+    document.getElementById('donateForm').addEventListener('submit', e=>{
+      e.preventDefault();
+      const name = document.getElementById('donorName').value.trim() || 'Anonim';
+      const amount = Number(document.getElementById('donationAmount').value) || 0;
+      const proofFile = document.getElementById('donationProof').files[0];
+      if(amount < 1000){ alert('Minimal donasi Rp 1.000'); return }
+      if(proofFile){
+        const reader = new FileReader();
+        reader.onload = function(){
+          const donor = {id: uid('d'), name, amount, proof: reader.result, date: new Date().toISOString()};
+          DONORS.push(donor); save(DONORS_KEY, DONORS);
+          alert('Terima kasih! Donasi Anda tercatat.');
+        };
+        reader.readAsDataURL(proofFile);
+      }
+    });
+
+    renderProjects();
+  </script>
+</body>
+</html>
