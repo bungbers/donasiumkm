@@ -253,7 +253,10 @@ Notes:
 
         const el=document.createElement('div'); el.className='card project';
         el.innerHTML = `
-          <img src="${p.image && p.image.startsWith('http') ? esc(p.image) : 'https://via.placeholder.com/900x600'}" alt="${esc(p.title)}"onerror="this.src='https://via.placeholder.com/900x600';" />
+          <img src="${p.image && p.image.trim() !== '' ? esc(p.image.trim()) : 'https://via.placeholder.com/900x600'}" 
+     alt="${esc(p.title)}" 
+     onerror="this.src='https://via.placeholder.com/900x600';" />
+
           <div class="card-body">
             <div style="display:flex;justify-content:space-between;align-items:center">
               <div><div class="badge">${esc(p.category||'Lainnya')}</div><h3>${esc(p.title)}</h3><div class="muted">${esc(p.location)}</div></div>
